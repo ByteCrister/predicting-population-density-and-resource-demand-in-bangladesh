@@ -1,57 +1,64 @@
-# Run from repository root. Reads generator CSVs (written in repo root),
-# cleans and engineers features, writes consolidated CSV to root/datasets/all.csv,
-# trains two sample regression models, and saves figures to root/figures/.
+"""
+generate_and_model.py
 
-# Usage:
-#     python3 generate_and_model.py
+Reads generator CSVs from ./datasets, cleans and engineers features,
+writes consolidated CSV to ./datasets/all.csv, trains two sample regression models,
+and saves figures to ./datasets/figures/.
 
-import os
+Usage:
+    python3 generate_and_model.py
+"""
 from pathlib import Path
 import warnings
+
 warnings.filterwarnings("ignore")
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.metrics import r2_score, mean_absolute_error
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import r2_score, mean_absolute_error
 
 SEED = 42
 np.random.seed(SEED)
 
-# --- Paths
-ROOT = Path(".").resolve()
-OUT_DIR = ROOT / "predicting-population-density-and-resource-demand-in-bangladesh" / "datasets"
-FIG_DIR = ROOT / "predicting-population-density-and-resource-demand-in-bangladesh" / "figures"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
+# --- Paths: read/write within ./datasets
+REPO_ROOT = Path(__file__).resolve().parent
+DATA_DIR = REPO_ROOT / "datasets"
+FIG_DIR = REPO_ROOT / "figures"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- Helper utilities
+
+# --- Utility helpers
 def safe_read(csv_name):
-    p = ROOT / csv_name
-    if not p.exists():
-        raise FileNotFoundError(f"Expected CSV not found: {p}")
-    return pd.read_csv(p)
+    p = DATA_DIR / csv_name
+    if p.exists():
+        return pd.read_csv(p)
+    raise FileNotFoundError(f"Expected CSV not found: {csv_name}\nChecked: {p}")
+
 
 def enforce_types(df, spec):
     for col, typ in spec.items():
         if col not in df.columns:
             continue
         if typ == "int":
-            df[col] = pd.to_numeric(df[col], errors="coerce").round().fillna(0).astype(int)
+            df[col] = (
+                pd.to_numeric(df[col], errors="coerce").round().fillna(0).astype(int)
+            )
         elif typ == "float":
             df[col] = pd.to_numeric(df[col], errors="coerce").astype(float)
         elif typ == "str":
             df[col] = df[col].astype(str)
     return df
 
-# --- Load canonical tables produced by generator
-tables = {}
+
+# --- Load tables from datasets/
 csv_files = [
     "population_demographics.csv",
     "population_density.csv",
@@ -69,116 +76,209 @@ csv_files = [
     "technology_connectivity.csv",
     "agriculture_food_security.csv",
 ]
-
+tables = {}
 for fn in csv_files:
-    tables[fn.replace(".csv", "")] = safe_read(fn)
+    try:
+        tables[fn.replace(".csv", "")] = safe_read(fn)
+        print(f"Loaded: {fn}")
+    except FileNotFoundError:
+        print(f"Warning: missing CSV (skipped): {fn}")
 
-# --- Canonical typing and quick validation (subset of DATA_DICTIONARY)
-# Apply minimal canonical types for key tables
+# --- Canonical typing for population_demographics (base)
+if "population_demographics" not in tables:
+    raise RuntimeError("population_demographics.csv must be present in datasets/")
+
 tables["population_demographics"] = enforce_types(
     tables["population_demographics"],
     {
-        "district": "str", "year": "int", "population": "int",
-        "area_km2": "float", "density_per_km2": "float",
-        "children_percent": "float", "working_age_percent": "float",
-        "elderly_percent": "float", "urban_percent": "float",
-        "urban_population": "int", "rural_population": "int",
+        "district": "str",
+        "year": "int",
+        "population": "int",
+        "area_km2": "float",
+        "density_per_km2": "float",
+        "children_percent": "float",
+        "working_age_percent": "float",
+        "elderly_percent": "float",
+        "urban_percent": "float",
+        "urban_population": "int",
+        "rural_population": "int",
     },
 )
 
-# Ensure no negative counts/areas
-for df in tables.values():
+# Clamp percent columns and non-negative fields across all loaded tables
+for name, df in list(tables.items()):
     for c in df.select_dtypes(include=[np.number]).columns:
         if "percent" in c.lower():
-            # clamp percent columns to 0-100
             df[c] = df[c].clip(lower=0.0, upper=100.0)
-        else:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-            if c in ("area_km2",):
-                df[c] = df[c].clip(lower=0.0)
+        if c in ("area_km2",):
+            df[c] = df[c].clip(lower=0.0)
+    tables[name] = df
 
-# --- Feature engineering helpers
-def add_per_capita_columns(merged):
-    merged["water_per_person_lpd"] = (merged["water_mld"] * 1e6) / merged["population"]
-    merged["elec_mwh_per_person"] = merged["electricity_mwh"] / merged["population"]
-    merged["food_kg_per_person_per_year"] = (merged["food_demand_tons"] * 1000.0) / merged["population"]
-    merged["housing_units_per_1000"] = merged["housing_units"] / (merged["population"] / 1000.0)
-    return merged
-
-def add_density_related(merged):
-    merged["pop_per_hectare"] = merged["density_per_km2"] / 10.0
-    merged["urban_to_rural_ratio"] = merged["urban_population"] / merged["rural_population"].replace(0, np.nan)
-    merged["urban_to_rural_ratio"] = merged["urban_to_rural_ratio"].fillna(merged["urban_percent"] / (100 - merged["urban_percent"] + 1e-6))
-    return merged
-
-def add_climate_severity(merged):
-    # normalized climate severity: combine flood risk, drought index and cyclone frequency
-    merged["climate_severity"] = (
-        (merged["flood_risk_score"].fillna(0) / 10.0) * 0.5 +
-        (merged["drought_index"].fillna(0) / 10.0) * 0.3 +
-        (merged["cyclone_events"].fillna(0) / (merged["cyclone_events"].max() + 1e-6)) * 0.2
+# --- Preprocess migration_trends into per-district inflow/outflow aggregates
+if "migration_trends" in tables:
+    mig = tables["migration_trends"].copy()
+    # ensure expected columns
+    for col in ["from_district", "to_district", "year", "migrants"]:
+        if col not in mig.columns:
+            raise RuntimeError("migration_trends.csv missing expected column: " + col)
+    mig["year"] = pd.to_numeric(mig["year"], errors="coerce").astype(int)
+    mig["migrants"] = (
+        pd.to_numeric(mig["migrants"], errors="coerce").fillna(0).astype(int)
     )
-    return merged
-
-def add_temporal_lags(merged, group="district", cols_to_lag=None, lag_years=[1,2]):
-    if cols_to_lag is None:
-        cols_to_lag = ["population", "density_per_km2", "water_mld", "electricity_mwh"]
-    merged = merged.sort_values([group, "year"])
-    for c in cols_to_lag:
-        for l in lag_years:
-            name = f"{c}_lag{l}"
-            merged[name] = merged.groupby(group)[c].shift(l)
-    # rolling mean (3-year) for numeric columns
-    numeric_cols = ["population", "density_per_km2", "water_mld"]
-    for c in numeric_cols:
-        merged[f"{c}_rolling3"] = merged.groupby(group)[c].rolling(window=3, min_periods=1).mean().reset_index(level=0, drop=True)
-    return merged
+    outflow = (
+        mig.groupby(["from_district", "year"], as_index=False)["migrants"]
+        .sum()
+        .rename(columns={"from_district": "district", "migrants": "migration_outflow"})
+    )
+    inflow = (
+        mig.groupby(["to_district", "year"], as_index=False)["migrants"]
+        .sum()
+        .rename(columns={"to_district": "district", "migrants": "migration_inflow"})
+    )
+    mig_agg = inflow.merge(outflow, on=["district", "year"], how="outer").fillna(0)
+    mig_agg["migration_inflow"] = mig_agg["migration_inflow"].astype(int)
+    mig_agg["migration_outflow"] = mig_agg["migration_outflow"].astype(int)
+    tables["migration_trends_agg"] = mig_agg
+    tables.pop("migration_trends", None)
+    print(
+        "Aggregated migration_trends -> migration_trends_agg (migration_inflow/outflow)"
+    )
 
 # --- Merge strategy: left-join population_demographics (base) with each table on district+year
 base = tables["population_demographics"].copy()
-merged = base
+merged = base.copy()
 join_keys = ["district", "year"]
 
-for name, df in tables.items():
+for name, df in list(tables.items()):
     if name == "population_demographics":
         continue
-    # prefer suffix to prevent collisions
-    merged = merged.merge(df, on=join_keys, how="left", suffixes=("", f"_{name}"))
+    # Only merge tables that contain both join keys
+    if not set(join_keys).issubset(df.columns):
+        print(
+            f"Skipping merge for '{name}': missing keys {join_keys}; cols: {list(df.columns)[:8]}"
+        )
+        continue
+    dfc = df.copy()
+    dfc["year"] = pd.to_numeric(dfc["year"], errors="coerce").astype(int)
+    dfc["district"] = dfc["district"].astype(str)
+    merged = merged.merge(dfc, on=join_keys, how="left", suffixes=("", f"_{name}"))
+    print(f"Merged table: {name}")
 
-# There can be columns duplicated across merges (e.g., schools from urban_infrastructure and education)
-# Resolve duplicates by keeping the column without suffix when present, else the suffixed one.
-def coalesce_columns(df):
-    cols = df.columns.tolist()
-    new = df.copy()
-    for c in cols:
-        if c.endswith("_population_demographics"):
-            base_name = c.replace("_population_demographics", "")
-            if base_name in new.columns:
-                new.drop(columns=[c], inplace=True)
-            else:
-                new.rename(columns={c: base_name}, inplace=True)
-    return new
 
-merged = coalesce_columns(merged)
+# Resolve suffixed duplicates: if base (unsuffixed) exists keep it, else rename suffixed to base
+def coalesce_merge_columns(df, table_names):
+    out = df.copy()
+    for t in table_names:
+        sfx = f"_{t}"
+        for col in list(out.columns):
+            if col.endswith(sfx):
+                base_col = col[: -len(sfx)]
+                if base_col in out.columns:
+                    out.drop(columns=[col], inplace=True)
+                else:
+                    out.rename(columns={col: base_col}, inplace=True)
+    return out
 
-# --- Derived features
+
+merged = coalesce_merge_columns(merged, tables.keys())
+
+
+# --- Feature engineering
+def add_per_capita_columns(df):
+    if {"water_mld", "population"}.issubset(df.columns):
+        df["water_per_person_lpd"] = (df["water_mld"].fillna(0) * 1e6) / df[
+            "population"
+        ].replace(0, np.nan)
+    if {"electricity_mwh", "population"}.issubset(df.columns):
+        df["elec_mwh_per_person"] = df["electricity_mwh"].fillna(0) / df[
+            "population"
+        ].replace(0, np.nan)
+    if {"food_demand_tons", "population"}.issubset(df.columns):
+        df["food_kg_per_person_per_year"] = (
+            df["food_demand_tons"].fillna(0) * 1000.0
+        ) / df["population"].replace(0, np.nan)
+    if {"housing_units", "population"}.issubset(df.columns):
+        df["housing_units_per_1000"] = df["housing_units"].fillna(0) / (
+            df["population"].replace(0, np.nan) / 1000.0
+        )
+    return df
+
+
+def add_density_related(df):
+    if "density_per_km2" in df.columns:
+        df["pop_per_hectare"] = df["density_per_km2"].fillna(0) / 10.0
+    if {"urban_population", "rural_population", "urban_percent"}.issubset(df.columns):
+        df["urban_to_rural_ratio"] = df["urban_population"].replace(0, np.nan) / df[
+            "rural_population"
+        ].replace(0, np.nan)
+        df["urban_to_rural_ratio"] = df["urban_to_rural_ratio"].fillna(
+            df["urban_percent"] / (100.0 - df["urban_percent"] + 1e-6)
+        )
+    return df
+
+
+def add_climate_severity(df):
+    parts = []
+    if "flood_risk_score" in df.columns:
+        parts.append((df["flood_risk_score"].fillna(0) / 10.0) * 0.5)
+    else:
+        parts.append(0)
+    if "drought_index" in df.columns:
+        parts.append((df["drought_index"].fillna(0) / 10.0) * 0.3)
+    else:
+        parts.append(0)
+    if "cyclone_events" in df.columns:
+        max_c = df["cyclone_events"].max(skipna=True)
+        denom = (max_c + 1e-6) if not np.isnan(max_c) else 1.0
+        parts.append((df["cyclone_events"].fillna(0) / denom) * 0.2)
+    else:
+        parts.append(0)
+    df["climate_severity"] = sum(parts)
+    return df
+
+
+def add_temporal_lags(df, group="district", cols_to_lag=None, lag_years=[1, 2]):
+    if cols_to_lag is None:
+        cols_to_lag = ["population", "density_per_km2", "water_mld", "electricity_mwh"]
+    df = df.sort_values([group, "year"])
+    for c in cols_to_lag:
+        if c not in df.columns:
+            continue
+        for l in lag_years:
+            df[f"{c}_lag{l}"] = df.groupby(group)[c].shift(l)
+    numeric_cols = [
+        c for c in ["population", "density_per_km2", "water_mld"] if c in df.columns
+    ]
+    for c in numeric_cols:
+        df[f"{c}_rolling3"] = (
+            df.groupby(group)[c]
+            .rolling(window=3, min_periods=1)
+            .mean()
+            .reset_index(level=0, drop=True)
+        )
+    return df
+
+
 merged = add_per_capita_columns(merged)
 merged = add_density_related(merged)
 merged = add_climate_severity(merged)
 merged = add_temporal_lags(merged)
 
-# Encode district as category and integer code for models
+# Encode district
+merged["district"] = merged["district"].astype(str)
 merged["district_cat"] = merged["district"].astype("category")
 merged["district_code"] = merged["district_cat"].cat.codes
 
-# Fill remaining missing numeric values with sensible defaults (median by district-year group)
+# Fill missing numeric values: district median then global median fallback
 num_cols = merged.select_dtypes(include=[np.number]).columns.tolist()
 for c in num_cols:
     if merged[c].isna().any():
-        merged[c] = merged.groupby("district")[c].transform(lambda x: x.fillna(x.median()))
-        merged[c] = merged[c].fillna(0.0)
+        merged[c] = merged.groupby("district")[c].transform(
+            lambda x: x.fillna(x.median())
+        )
+        merged[c] = merged[c].fillna(merged[c].median())
 
-# Final sanity clamps per conventions
+# Final sanity clamps
 if "urban_percent" in merged.columns:
     merged["urban_percent"] = merged["urban_percent"].clip(0.0, 100.0)
 if "children_percent" in merged.columns:
@@ -186,14 +286,16 @@ if "children_percent" in merged.columns:
 if "avg_rent_bdt" in merged.columns:
     merged["avg_rent_bdt"] = merged["avg_rent_bdt"].clip(lower=0.0)
 
-# --- Persist consolidated dataset
-OUT_ALL = OUT_DIR / "all.csv"
+# --- Persist consolidated dataset to ./datasets/all.csv
+OUT_ALL = DATA_DIR / "all.csv"
 merged.to_csv(OUT_ALL, index=False)
 print(f"Wrote consolidated dataset to: {OUT_ALL}")
 
-# --- Quick EDA plots (timeseries for each district: density and water demand)
+# --- Quick EDA plots in ./datasets/figures
 sns.set(style="whitegrid", context="talk")
 for var in ["density_per_km2", "water_mld"]:
+    if var not in merged.columns:
+        continue
     plt.figure(figsize=(10, 6))
     for d in merged["district"].unique():
         sub = merged[merged["district"] == d]
@@ -208,9 +310,9 @@ for var in ["density_per_km2", "water_mld"]:
     plt.close()
     print(f"Saved figure: {fn}")
 
-# --- Modeling helper function
-def train_and_evaluate(target, features, df, group_time="year"):
-    # Use last 3 years as holdout to respect temporal ordering
+
+# --- Modeling: helper
+def train_and_evaluate(target, features, df):
     years = sorted(df["year"].unique())
     if len(years) < 6:
         test_years = years[-2:]
@@ -218,41 +320,63 @@ def train_and_evaluate(target, features, df, group_time="year"):
         test_years = years[-3:]
     train_df = df[~df["year"].isin(test_years)].copy()
     test_df = df[df["year"].isin(test_years)].copy()
-
     X_train = train_df[features].copy()
     y_train = train_df[target].values
     X_test = test_df[features].copy()
     y_test = test_df[target].values
 
-    # Simple preprocessing: numeric scaling, one-hot small cardinality
     numeric_feats = X_train.select_dtypes(include=[np.number]).columns.tolist()
     categorical_feats = [c for c in features if c not in numeric_feats]
 
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", StandardScaler(), numeric_feats),
-            ("cat", OneHotEncoder(handle_unknown="ignore", sparse=False), categorical_feats),
-        ],
-        remainder="drop",
-    )
+    try:
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("num", StandardScaler(), numeric_feats),
+                (
+                    "cat",
+                    OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                    categorical_feats,
+                ),
+            ],
+            remainder="drop",
+        )
+    except TypeError:
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("num", StandardScaler(), numeric_feats),
+                (
+                    "cat",
+                    OneHotEncoder(handle_unknown="ignore", sparse=False),
+                    categorical_feats,
+                ),
+            ],
+            remainder="drop",
+        )
 
     model = Pipeline(
-        steps=[
+        [
             ("pre", preprocessor),
-            ("rf", RandomForestRegressor(n_estimators=200, random_state=SEED, n_jobs=-1)),
+            (
+                "rf",
+                RandomForestRegressor(n_estimators=200, random_state=SEED, n_jobs=-1),
+            ),
         ]
     )
 
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
-
     r2 = r2_score(y_test, y_pred)
     mae = mean_absolute_error(y_test, y_pred)
 
-    # Save simple scatter plot observed vs predicted
-    plt.figure(figsize=(6,6))
+    # observed vs predicted plot
+    plt.figure(figsize=(6, 6))
     sns.scatterplot(x=y_test, y=y_pred)
-    plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color="red", linestyle="--")
+    plt.plot(
+        [y_test.min(), y_test.max()],
+        [y_test.min(), y_test.max()],
+        color="red",
+        linestyle="--",
+    )
     plt.xlabel("Observed")
     plt.ylabel("Predicted")
     plt.title(f"{target} observed vs predicted (R2={r2:.3f} MAE={mae:.2f})")
@@ -261,11 +385,9 @@ def train_and_evaluate(target, features, df, group_time="year"):
     plt.savefig(fname, dpi=150)
     plt.close()
 
-    # Feature importance extraction (works because RF is last step)
-    # We need to extract feature names after preprocessing
+    # feature importances (RF)
     pre = model.named_steps["pre"]
     rf = model.named_steps["rf"]
-    # build feature names
     num_names = numeric_feats
     cat_names = []
     if categorical_feats:
@@ -273,10 +395,13 @@ def train_and_evaluate(target, features, df, group_time="year"):
         cat_names = list(ohe.get_feature_names_out(categorical_feats))
     feature_names = num_names + cat_names
     importances = rf.feature_importances_
-    imp_df = pd.DataFrame({"feature": feature_names, "importance": importances}).sort_values("importance", ascending=False).head(30)
+    imp_df = (
+        pd.DataFrame({"feature": feature_names, "importance": importances})
+        .sort_values("importance", ascending=False)
+        .head(30)
+    )
 
-    # Save feature importance barplot
-    plt.figure(figsize=(8, min(10, len(imp_df)*0.4 + 1)))
+    plt.figure(figsize=(8, min(10, len(imp_df) * 0.4 + 1)))
     sns.barplot(data=imp_df, x="importance", y="feature", palette="viridis")
     plt.title(f"Top features for predicting {target}")
     plt.tight_layout()
@@ -284,10 +409,18 @@ def train_and_evaluate(target, features, df, group_time="year"):
     plt.savefig(fn2, dpi=150)
     plt.close()
 
-    return {"r2": r2, "mae": mae, "imp_df": imp_df, "model": model, "y_test": y_test, "y_pred": y_pred, "test_index": test_df.index}
+    return {
+        "r2": r2,
+        "mae": mae,
+        "imp_df": imp_df,
+        "model": model,
+        "y_test": y_test,
+        "y_pred": y_pred,
+        "test_index": test_df.index,
+    }
 
-# --- Define features for two sample tasks
-# Use a mixture of demographics, economy, climate, infrastructure and engineered features
+
+# --- Define feature set (filter to available columns)
 base_features = [
     "year",
     "district_code",
@@ -312,7 +445,6 @@ base_features = [
     "residential_mwh",
     "commercial_mwh",
     "industrial_mwh",
-    # engineered
     "water_per_person_lpd",
     "elec_mwh_per_person",
     "food_kg_per_person_per_year",
@@ -324,39 +456,33 @@ base_features = [
     "density_per_km2_lag1",
     "density_per_km2_lag2",
 ]
-
-# Filter features that exist in merged (some columns might not exist depending on generator)
 features = [f for f in base_features if f in merged.columns]
 
-# --- Task 1: Predict density_per_km2
-task1_target = "density_per_km2"
-print("\nTraining model for:", task1_target)
-task1_result = train_and_evaluate(task1_target, features, merged)
-print(f"Density model: R2={task1_result['r2']:.3f}, MAE={task1_result['mae']:.3f}")
-
-# --- Task 2: Predict water_mld
-task2_target = "water_mld"
-if task2_target in merged.columns:
-    print("\nTraining model for:", task2_target)
-    task2_result = train_and_evaluate(task2_target, features, merged)
-    print(f"Water demand model: R2={task2_result['r2']:.3f}, MAE={task2_result['mae']:.3f}")
+# --- Task 1: predict density_per_km2
+if "density_per_km2" in merged.columns:
+    print("Training density_per_km2 model...")
+    res1 = train_and_evaluate("density_per_km2", features, merged)
+    print(f"Density model: R2={res1['r2']:.3f} MAE={res1['mae']:.3f}")
+    # save predictions
+    preds = merged.loc[res1["test_index"], ["district", "year"]].copy()
+    preds["density_per_km2_observed"] = res1["y_test"]
+    preds["density_per_km2_predicted"] = res1["y_pred"]
+    preds.to_csv(DATA_DIR / "predictions_density_per_km2.csv", index=False)
+    print("Saved predictions_density_per_km2.csv")
 else:
-    print("water_mld not present in merged dataset; skipping water demand model.")
+    print("density_per_km2 not available; skipping density model")
 
-# --- Save sample predictions into CSV for inspection (test rows with predictions)
-def save_predictions(result, target, df):
-    if result is None:
-        return
-    test_idx = result["test_index"]
-    pred_df = df.loc[test_idx, ["district", "year"]].copy()
-    pred_df[f"{target}_observed"] = result["y_test"]
-    pred_df[f"{target}_predicted"] = result["y_pred"]
-    outp = OUT_DIR / f"predictions_{target}.csv"
-    pred_df.to_csv(outp, index=False)
-    print(f"Saved predictions to: {outp}")
+# --- Task 2: predict water_mld
+if "water_mld" in merged.columns:
+    print("Training water_mld model...")
+    res2 = train_and_evaluate("water_mld", features, merged)
+    print(f"Water model: R2={res2['r2']:.3f} MAE={res2['mae']:.3f}")
+    preds2 = merged.loc[res2["test_index"], ["district", "year"]].copy()
+    preds2["water_mld_observed"] = res2["y_test"]
+    preds2["water_mld_predicted"] = res2["y_pred"]
+    preds2.to_csv(DATA_DIR / "predictions_water_mld.csv", index=False)
+    print("Saved predictions_water_mld.csv")
+else:
+    print("water_mld not available; skipping water model")
 
-save_predictions(task1_result, task1_target, merged)
-if task2_target in merged.columns:
-    save_predictions(task2_result, task2_target, merged)
-
-print("All done. Figures in:", FIG_DIR, "Consolidated CSV in:", OUT_ALL)
+print("Done. Consolidated CSV:", OUT_ALL, "Figures in:", FIG_DIR)
