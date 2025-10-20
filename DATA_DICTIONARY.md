@@ -1,144 +1,317 @@
-# Data Dictionary — Bangladesh Urban Growth & Resource Demand (CSV schema)
+# Bangladesh Urban Growth & Resource Demand — Data Dictionary
 
-## population_demographics.csv
+## Table of Contents
 
-- **district** — Unit: none; Type: string; Description: Administrative district name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **population** — Unit: persons; Type: integer; Description: Total residents in the district in that year.
-- **area_km2** — Unit: km²; Type: float; Description: Land area of the district used for density calculations.
-- **density_per_km2** — Unit: persons per km²; Type: float; Description: population / area_km2.
-- **children_percent** — Unit: percent; Type: float; Description: % of population aged 0–14 (synthetic estimate).
-- **working_age_percent** — Unit: percent; Type: float; Description: % of population aged 15–64 (synthetic estimate).
-- **elderly_percent** — Unit: percent; Type: float; Description: % of population aged 65+ (synthetic estimate).
-- **urban_percent** — Unit: percent; Type: float; Description: % of population living in urban areas.
-- **urban_population** — Unit: persons; Type: integer; Description: Count of residents classified as urban.
-- **rural_population** — Unit: persons; Type: integer; Description: Count of residents classified as rural.
+1. [Population & Demographics](#population--demographics)
+2. [Population Density](#population-density)
+3. [Resource Demand](#resource-demand)
+4. [Urban Infrastructure](#urban-infrastructure)
+5. [Land Use & Zoning](#land-use--zoning)
+6. [Climate & Environmental Impact](#climate--environmental-impact)
+7. [Economic Indicators](#economic-indicators)
+8. [Migration](#migration)
+9. [Health & Sanitation](#health--sanitation)
+10. [Education](#education)
+11. [Transportation](#transportation)
+12. [Housing](#housing)
+13. [Technology & Connectivity](#technology--connectivity)
+14. [Agriculture & Food Security](#agriculture--food-security)
+15. [District-Year Summary](#district-year-summary)
+16. [Notes](#notes)
 
-## population_density.csv
+---
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **population** — Unit: persons; Type: integer; Description: Total residents.
-- **area_km2** — Unit: km²; Type: float; Description: District land area.
-- **density_per_km2** — Unit: persons per km²; Type: float; Description: population / area_km2.
+## Population & Demographics
 
-## resource_demand.csv
+### `population_demographics.csv`
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **water_mld** — Unit: million liters per day (MLD); Type: float; Description: Estimated daily water demand aggregated for the district.
-- **electricity_mwh** — Unit: megawatt-hours (MWh) per year; Type: integer; Description: Annual electricity demand proxy for the district.
-- **housing_units_demand** — Unit: housing units per year; Type: integer; Description: Net new housing units required (annual synthetic demand).
-- **food_demand_tons** — Unit: metric tons per year; Type: integer; Description: Annual food consumption demand.
+| Column              | Unit            | Type      | Description                                     |
+| ------------------- | --------------- | --------- | ----------------------------------------------- |
+| district            | none            | string    | Administrative district name.                   |
+| period_start        | date (ISO)      | timestamp | Period start (first day of interval).           |
+| year                | yyyy            | integer   | Year of observation.                            |
+| replica_id          | none            | integer   | Replica index for deterministic replication.    |
+| population          | persons         | integer   | Total residents in the district in that period. |
+| area_km2            | km²             | float     | Land area used for density calculations.        |
+| density_per_km2     | persons per km² | float     | population / area_km2 (validated).              |
+| children_percent    | percent         | float     | % of population aged 0–14.                      |
+| working_age_percent | percent         | float     | % of population aged 15–64.                     |
+| elderly_percent     | percent         | float     | % of population aged 65+.                       |
+| urban_percent       | percent         | float     | % living in urban areas.                        |
+| urban_population    | persons         | integer   | Count of urban residents.                       |
+| rural_population    | persons         | integer   | Count of rural residents.                       |
 
-## urban_infrastructure.csv
+---
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **road_km** — Unit: kilometers; Type: integer; Description: Total road network length in the district.
-- **schools** — Unit: count; Type: integer; Description: Number of schools.
-- **hospitals** — Unit: count; Type: integer; Description: Number of hospitals.
-- **green_space_km2** — Unit: km²; Type: float; Description: Area of green/open public space.
+## Population Density
 
-## land_use_zoning.csv
+### `population_density.csv` (merged/aggregated)
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **residential_area_km2** — Unit: km²; Type: float; Description: Area zoned/used for residential purposes.
-- **commercial_area_km2** — Unit: km²; Type: float; Description: Area zoned/used for commercial purposes.
-- **industrial_area_km2** — Unit: km²; Type: float; Description: Area zoned/used for industrial purposes.
-- **agricultural_area_km2** — Unit: km²; Type: float; Description: Area used for agriculture.
+| Column          | Unit            | Type    | Description                                 |
+| --------------- | --------------- | ------- | ------------------------------------------- |
+| district        | none            | string  | District name.                              |
+| year            | yyyy            | integer | Year of observation.                        |
+| population      | persons         | integer | Total residents (aggregated from replicas). |
+| area_km2        | km²             | float   | District land area.                         |
+| density_per_km2 | persons per km² | float   | population / area_km2 (recomputed).         |
 
-## climate_impact.csv
+---
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **avg_temp_c** — Unit: degrees Celsius (°C); Type: float; Description: Annual average temperature.
-- **rainfall_mm** — Unit: millimeters (mm); Type: integer; Description: Annual total rainfall.
-- **flood_risk_score** — Unit: index 1–10; Type: integer; Description: Synthetic flood risk index (higher = greater risk).
-- **cyclone_events** — Unit: events per year; Type: integer; Description: Count of cyclone events in the year.
-- **drought_index** — Unit: synthetic index (0–10); Type: float; Description: Drought severity proxy (higher = drier/stronger stress).
+## Resource Demand
 
-## environmental_stress.csv
+### `resource_demand.csv`
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **air_quality_index** — Unit: index (higher = worse); Type: integer or float; Description: Synthetic AQ proxy.
-- **heatwave_days** — Unit: days per year; Type: integer; Description: Number of heatwave days.
-- **flood_events** — Unit: events per year; Type: integer; Description: Count of flood events derived from climate variables.
-- **green_cover_percent** — Unit: percent; Type: float; Description: (green_space_km2 / area_km2) \* 100.
+| Column               | Unit               | Type      | Description                     |
+| -------------------- | ------------------ | --------- | ------------------------------- |
+| district             | none               | string    | District name.                  |
+| period_start         | date (ISO)         | timestamp | Period start.                   |
+| year                 | yyyy               | integer   | Year of observation.            |
+| replica_id           | none               | integer   | Replica index.                  |
+| water_mld            | MLD                | float     | Daily water demand.             |
+| electricity_mwh      | MWh                | integer   | Annual electricity demand.      |
+| housing_units_demand | housing units/year | integer   | Net new housing units.          |
+| food_demand_tons     | metric tons/year   | integer   | Annual food consumption demand. |
 
-## economic_indicators.csv
+---
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **avg_income_bdt** — Unit: Bangladeshi Taka (BDT) per year; Type: integer; Description: Average annual per-capita income proxy.
-- **employment_rate_percent** — Unit: percent; Type: float; Description: % of working-age population employed (synthetic estimate).
-- **poverty_rate_percent** — Unit: percent; Type: float; Description: % of population below synthetic poverty threshold.
-- **agri_share_percent** — Unit: percent; Type: float; Description: % share of economic activity in agriculture.
-- **industry_share_percent** — Unit: percent; Type: float; Description: % share of economic activity in industry.
-- **services_share_percent** — Unit: percent; Type: float; Description: % share of economic activity in services.
+## Urban Infrastructure
 
-## migration_trends.csv
+### `urban_infrastructure.csv`
 
-- **from_district** — Unit: none; Type: string; Description: Origin district name.
-- **to_district** — Unit: none; Type: string; Description: Destination district name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of migration flow.
-- **migrants** — Unit: persons per year; Type: integer; Description: Number of migrants moving from origin to destination in that year (synthetic flow).
+| Column          | Unit       | Type      | Description                      |
+| --------------- | ---------- | --------- | -------------------------------- |
+| district        | none       | string    | District name.                   |
+| period_start    | date (ISO) | timestamp | Period start.                    |
+| year            | yyyy       | integer   | Year of observation.             |
+| replica_id      | none       | integer   | Replica index.                   |
+| road_km         | km         | integer   | Total road network length.       |
+| schools         | count      | integer   | Number of schools.               |
+| hospitals       | count      | integer   | Number of hospitals.             |
+| green_space_km2 | km²        | float     | Area of green/open public space. |
 
-## health_sanitation.csv
+---
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **hospital_beds** — Unit: beds; Type: integer; Description: Total hospital bed capacity.
-- **clinics** — Unit: count; Type: integer; Description: Number of clinics.
-- **sanitation_coverage_percent** — Unit: percent; Type: float; Description: % of population with basic sanitation access.
-- **waste_collection_percent** — Unit: percent; Type: float; Description: % of population/area covered by waste collection services.
+## Land Use & Zoning
 
-## education.csv
+### `land_use_zoning.csv`
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **schools** — Unit: count; Type: integer; Description: Number of schools.
-- **literacy_rate_percent** — Unit: percent; Type: float; Description: % of population classified as literate.
-- **student_teacher_ratio** — Unit: students per teacher; Type: float; Description: Average number of students per teacher (proxy for class size).
+| Column                | Unit       | Type      | Description                          |
+| --------------------- | ---------- | --------- | ------------------------------------ |
+| district              | none       | string    | District name.                       |
+| period_start          | date (ISO) | timestamp | Period start.                        |
+| year                  | yyyy       | integer   | Year of observation.                 |
+| replica_id            | none       | integer   | Replica index.                       |
+| residential_area_km2  | km²        | float     | Area zoned for residential purposes. |
+| commercial_area_km2   | km²        | float     | Area zoned for commercial purposes.  |
+| industrial_area_km2   | km²        | float     | Area zoned for industrial purposes.  |
+| agricultural_area_km2 | km²        | float     | Area used for agriculture.           |
 
-## transportation.csv
+---
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **bus_routes** — Unit: count; Type: integer; Description: Number of bus routes serving urban areas.
-- **rail_km** — Unit: kilometers; Type: integer; Description: Length of rail network in the district.
-- **avg_commute_time_min** — Unit: minutes; Type: integer; Description: Average one-way commute time.
-- **vehicle_count** — Unit: vehicles; Type: integer; Description: Registered vehicles proxy in the district.
+## Climate & Environmental Impact
 
-## housing.csv
+### `climate_impact.csv`
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **housing_units** — Unit: housing units; Type: integer; Description: Estimated total housing stock.
-- **avg_rent_bdt** — Unit: BDT per month; Type: integer; Description: Typical monthly rent (synthetic average).
-- **vacancy_rate_percent** — Unit: percent; Type: float; Description: % of housing units vacant.
-- **slum_population_percent** — Unit: percent; Type: float; Description: % of district population living in informal/slum housing.
+| Column           | Unit        | Type      | Description                 |
+| ---------------- | ----------- | --------- | --------------------------- |
+| district         | none        | string    | District name.              |
+| period_start     | date (ISO)  | timestamp | Period start.               |
+| year             | yyyy        | integer   | Year of observation.        |
+| replica_id       | none        | integer   | Replica index.              |
+| avg_temp_c       | °C          | float     | Annual average temperature. |
+| rainfall_mm      | mm          | integer   | Annual total rainfall.      |
+| flood_risk_score | index 1–10  | integer   | Synthetic flood risk index. |
+| cyclone_events   | events/year | integer   | Count of cyclone events.    |
+| drought_index    | 0–10        | float     | Drought severity proxy.     |
 
-## technology_connectivity.csv
+### `environmental_stress.csv` (derived)
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **internet_penetration_percent** — Unit: percent; Type: float; Description: % of population with internet access.
-- **mobile_penetration_percent** — Unit: percent; Type: float; Description: % of population with mobile access/subscription proxy.
+| Column              | Unit        | Type    | Description                                           |
+| ------------------- | ----------- | ------- | ----------------------------------------------------- |
+| district            | none        | string  | District name.                                        |
+| year                | yyyy        | integer | Year of observation.                                  |
+| air_quality_index   | index       | float   | Synthetic AQ proxy.                                   |
+| heatwave_days       | days/year   | integer | Number of heatwave days.                              |
+| flood_events        | events/year | integer | Count of flood events derived from climate variables. |
+| green_cover_percent | percent     | float   | (green_space_km2 / area_km2) \* 100.                  |
 
-## agriculture_food_security.csv
+---
 
-- **district** — Unit: none; Type: string; Description: District name.
-- **year** — Unit: yyyy; Type: integer; Description: Year of observation.
-- **crop_yield_ton_per_hectare** — Unit: metric tons per hectare (t/ha); Type: float; Description: Crop yield per hectare.
-- **fertilizer_kg_per_hectare** — Unit: kg per hectare; Type: integer; Description: Fertilizer application rate.
-- **irrigated_area_km2** — Unit: km²; Type: integer; Description: Area under irrigation within the district.
-- **total_production_tons** — Unit: metric tons per year; Type: integer; Description: Gross crop production for the district.
+## Economic Indicators
 
-# Notes
+### `economic_indicators.csv`
 
-- Percent fields are expressed on a 0–100 scale.
-- Currency fields use BDT; clarify whether values are monthly or annual in downstream schemas (avg_income_bdt is annual; avg_rent_bdt is monthly).
-- Types are canonical expected types; downstream pipelines should validate nulls and ranges before modeling.
+| Column                  | Unit       | Type      | Description                            |
+| ----------------------- | ---------- | --------- | -------------------------------------- |
+| district                | none       | string    | District name.                         |
+| period_start            | date (ISO) | timestamp | Period start.                          |
+| year                    | yyyy       | integer   | Year of observation.                   |
+| replica_id              | none       | integer   | Replica index.                         |
+| avg_income_bdt          | BDT/year   | integer   | Avg annual per-capita income proxy.    |
+| employment_rate_percent | percent    | float     | % of working-age population employed.  |
+| poverty_rate_percent    | percent    | float     | % below synthetic poverty threshold.   |
+| agri_share_percent      | percent    | float     | % of economic activity in agriculture. |
+| industry_share_percent  | percent    | float     | % of economic activity in industry.    |
+| services_share_percent  | percent    | float     | % of economic activity in services.    |
+
+---
+
+## Migration
+
+### `migration_trends.csv`
+
+| Column        | Unit         | Type      | Description                                           |
+| ------------- | ------------ | --------- | ----------------------------------------------------- |
+| from_district | none         | string    | Origin district name.                                 |
+| to_district   | none         | string    | Destination district name.                            |
+| period_start  | date (ISO)   | timestamp | Period start.                                         |
+| year          | yyyy         | integer   | Year of migration flow.                               |
+| migrants      | persons/year | integer   | Number of migrants moving from origin to destination. |
+
+### `migration_trends_agg.csv`
+
+| Column            | Unit           | Type    | Description                                |
+| ----------------- | -------------- | ------- | ------------------------------------------ |
+| district          | none           | string  | District name (aggregated inflow/outflow). |
+| year              | yyyy           | integer | Year of observation.                       |
+| migration_inflow  | persons/period | integer | Sum of incoming migrants.                  |
+| migration_outflow | persons/period | integer | Sum of outgoing migrants.                  |
+| net_migration     | persons/period | integer | migration_inflow - migration_outflow.      |
+
+---
+
+## Health & Sanitation
+
+### `health_sanitation.csv`
+
+| Column                      | Unit       | Type      | Description                     |
+| --------------------------- | ---------- | --------- | ------------------------------- |
+| district                    | none       | string    | District name.                  |
+| period_start                | date (ISO) | timestamp | Period start.                   |
+| year                        | yyyy       | integer   | Year of observation.            |
+| replica_id                  | none       | integer   | Replica index.                  |
+| hospital_beds               | beds       | integer   | Total hospital bed capacity.    |
+| clinics                     | count      | integer   | Number of clinics.              |
+| sanitation_coverage_percent | percent    | float     | % with basic sanitation access. |
+| waste_collection_percent    | percent    | float     | % covered by waste collection.  |
+
+---
+
+## Education
+
+### `education.csv`
+
+| Column                | Unit             | Type      | Description                   |
+| --------------------- | ---------------- | --------- | ----------------------------- |
+| district              | none             | string    | District name.                |
+| period_start          | date (ISO)       | timestamp | Period start.                 |
+| year                  | yyyy             | integer   | Year of observation.          |
+| replica_id            | none             | integer   | Replica index.                |
+| schools               | count            | integer   | Number of schools.            |
+| literacy_rate_percent | percent          | float     | % of literate population.     |
+| student_teacher_ratio | students/teacher | float     | Average students per teacher. |
+
+---
+
+## Transportation
+
+### `transportation.csv`
+
+| Column               | Unit       | Type      | Description                   |
+| -------------------- | ---------- | --------- | ----------------------------- |
+| district             | none       | string    | District name.                |
+| period_start         | date (ISO) | timestamp | Period start.                 |
+| year                 | yyyy       | integer   | Year of observation.          |
+| replica_id           | none       | integer   | Replica index.                |
+| bus_routes           | count      | integer   | Number of bus routes.         |
+| rail_km              | km         | integer   | Length of rail network.       |
+| avg_commute_time_min | minutes    | integer   | Average one-way commute time. |
+| vehicle_count        | vehicles   | integer   | Registered vehicles proxy.    |
+
+---
+
+## Housing
+
+### `housing.csv`
+
+| Column                  | Unit       | Type      | Description                        |
+| ----------------------- | ---------- | --------- | ---------------------------------- |
+| district                | none       | string    | District name.                     |
+| period_start            | date (ISO) | timestamp | Period start.                      |
+| year                    | yyyy       | integer   | Year of observation.               |
+| replica_id              | none       | integer   | Replica index.                     |
+| housing_units           | units      | integer   | Estimated housing stock.           |
+| avg_rent_bdt            | BDT/month  | integer   | Typical monthly rent.              |
+| vacancy_rate_percent    | percent    | float     | % of units vacant.                 |
+| slum_population_percent | percent    | float     | % living in informal/slum housing. |
+
+---
+
+## Technology & Connectivity
+
+### `technology_connectivity.csv`
+
+| Column                       | Unit       | Type      | Description                           |
+| ---------------------------- | ---------- | --------- | ------------------------------------- |
+| district                     | none       | string    | District name.                        |
+| period_start                 | date (ISO) | timestamp | Period start.                         |
+| year                         | yyyy       | integer   | Year of observation.                  |
+| replica_id                   | none       | integer   | Replica index.                        |
+| internet_penetration_percent | percent    | float     | % of population with internet access. |
+| mobile_penetration_percent   | percent    | float     | % of population with mobile access.   |
+
+---
+
+## Agriculture & Food Security
+
+### `agriculture_food_security.csv`
+
+| Column                     | Unit        | Type      | Description             |
+| -------------------------- | ----------- | --------- | ----------------------- |
+| district                   | none        | string    | District name.          |
+| period_start               | date (ISO)  | timestamp | Period start.           |
+| year                       | yyyy        | integer   | Year of observation.    |
+| replica_id                 | none        | integer   | Replica index.          |
+| crop_yield_ton_per_hectare | t/ha        | float     | Crop yield per hectare. |
+| fertilizer_kg_per_hectare  | kg/ha       | integer   | Fertilizer rate.        |
+| irrigated_area_km2         | km²         | integer   | Area under irrigation.  |
+| total_production_tons      | metric tons | integer   | Gross crop production.  |
+
+---
+
+## District-Year Summary
+
+### `district_year_summary.csv`
+
+| Column                  | Unit        | Type    | Description                                      |
+| ----------------------- | ----------- | ------- | ------------------------------------------------ |
+| district                | none        | string  | District name.                                   |
+| year                    | yyyy        | integer | Year of observation.                             |
+| population_avg          | persons     | integer | Aggregated population.                           |
+| density_per_km2         | persons/km² | float   | Aggregated density.                              |
+| urban_percent           | percent     | float   | Aggregated urban percent.                        |
+| water_mld               | MLD         | float   | Aggregated water demand.                         |
+| electricity_mwh         | MWh         | integer | Aggregated electricity demand.                   |
+| road_km                 | km          | integer | Aggregated road length.                          |
+| schools                 | count       | integer | Aggregated schools.                              |
+| hospital_beds           | beds        | integer | Aggregated hospital capacity.                    |
+| avg_income_bdt          | BDT/year    | integer | Aggregated avg income.                           |
+| employment_rate_percent | percent     | float   | Aggregated employment rate.                      |
+| rainfall_mm             | mm          | integer | Aggregated rainfall.                             |
+| flood_risk_score        | index       | integer | Aggregated flood risk.                           |
+| migration_inflow        | persons     | integer | Aggregated inflow.                               |
+| migration_outflow       | persons     | integer | Aggregated outflow.                              |
+| net_migration           | persons     | integer | Aggregated net migration.                        |
+| green_cover_percent     | percent     | float   | green_space_km2 / area_km2 \* 100.               |
+| notes                   | none        | string  | Aggregation, replica collapse, imputation notes. |
+
+---
+
+## Notes
+
+- Percent fields: 0–100 scale.
+- `period_start` = canonical period column; `year` may aggregate pipelines.
+- `replica_id` allows deterministic replication; downstream pipelines collapse replica rows.
+- Merged/derived tables are pipeline outputs (not directly generated).
+- Currency fields: BDT; `avg_income_bdt` = annual, `avg_rent_bdt` = monthly.
+- Validate nulls, clamps, ranges before modeling.
