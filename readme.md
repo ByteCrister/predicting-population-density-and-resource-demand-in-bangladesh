@@ -50,6 +50,6 @@ See DATA_DICTIONARY.md for column-level units, types and descriptions.
 1. Clone
 
 ```bash
-git clone https://github.com/your-username/bangladesh-urban-ml.git
-cd bangladesh-urban-ml
+git clone https://github.com/ByteCrister/predicting-population-density-and-resource-demand-in-bangladesh.git
+cd predicting-population-density-and-resource-demand-in-bangladesh
 ```
